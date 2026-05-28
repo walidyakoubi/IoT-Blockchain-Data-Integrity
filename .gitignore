@@ -1,0 +1,32 @@
+gateway/master.key
+fabric_start/
+test_hmac_mote.py
+reanchor.py
+fabric_start/
+attack.py
+# Python virtual environments
+.venv/
+venv/
+__pycache__/
+*.pyc
+
+# Local Databases
+*.db
+*.sqlite3
+
+# Cryptographic Material / Hyperledger Fabric Configs
+crypto-config/
+channel-artifacts/
+*.key
+*.pem
+
+# Docker and Node Modules
+node_modules/
+.docker/
+
+# Block all certificates and keys generated locally
+infra/certs/
+*.crt
+*.key
+*.csr
+*.srl

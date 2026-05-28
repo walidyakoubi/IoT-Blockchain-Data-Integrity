@@ -1,0 +1,788 @@
+<!doctype html>
+<!--
+  index.html  —  Integrity Dashboard (port 8080 / api.py)
+  ----------------------------------------------------------------
+  PFE Project — Pipeline-verified IoT readings
+  Talks to api.py on http://localhost:8080
+  Served by:  python3 -m http.server 3001
+
+  Design: Option A — light data-tool aesthetic.
+  The top bar and login card stay identical to sharing.html
+  (dark / IBM Plex / industrial) for visual continuity, while
+  the content area is light, dense, and projector-friendly so
+  the 50-row readings table is comfortably readable.
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>IoT Integrity Console</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+  <style>
+    /* ============================================================
+       DESIGN TOKENS
+       ============================================================ */
+    :root {
+      /* Chrome (top bar, login) — dark, matches sharing.html */
+      --chrome-bg:        #0a0a0a;
+      --chrome-elev:      #141414;
+      --chrome-input:     #1c1c1c;
+      --chrome-line:      #3a3a3a;
+      --chrome-fg:        #e5e5e5;
+      --chrome-fg-dim:    #888;
+      --chrome-fg-faint:  #555;
+      --chrome-accent:    #fafafa;
+
+      /* Content area — light, data-tool feel */
+      --bg:               #f5f5f5;
+      --panel:            #ffffff;
+      --panel-alt:        #fafafa;
+      --line:             #e5e5e5;
+      --line-strong:      #d4d4d4;
+      --fg:               #171717;
+      --fg-dim:           #525252;
+      --fg-faint:         #a3a3a3;
+
+      /* Verdict colours — strong on white */
+      --verdict-intact:    #16a34a;
+      --verdict-intact-bg: #dcfce7;
+      --verdict-tampered:  #dc2626;
+      --verdict-tampered-bg:#fee2e2;
+      --verdict-pending:   #d97706;
+      --verdict-pending-bg:#fef3c7;
+      --verdict-failed:    #737373;
+      --verdict-failed-bg: #f5f5f5;
+
+      --ok:               #16a34a;
+      --warn:             #d97706;
+      --err:              #dc2626;
+      --info:             #2563eb;
+    }
+
+    *           { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body  { height: 100%; }
+    body {
+      font-family: 'IBM Plex Sans', sans-serif;
+      background: var(--bg);
+      color: var(--fg);
+      font-size: 14px;
+      line-height: 1.5;
+    }
+    code, pre, .mono, input, button, select, table.readings { font-family: 'IBM Plex Mono', monospace; }
+
+    /* ============================================================
+       TOP BAR — dark
+       ============================================================ */
+    header.topbar {
+      display: flex; align-items: center; gap: 24px;
+      padding: 16px 32px;
+      background: var(--chrome-bg);
+      border-bottom: 1px solid var(--chrome-line);
+      color: var(--chrome-fg);
+    }
+    header.topbar h1 {
+      font-size: 14px; letter-spacing: 0.08em;
+      text-transform: uppercase; font-weight: 700;
+    }
+    header.topbar h1::before {
+      content: "▍"; color: var(--chrome-accent); margin-right: 8px;
+    }
+    .topbar-spacer { flex: 1; }
+
+    .user-badge {
+      padding: 4px 10px;
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 11px; font-weight: 600;
+      letter-spacing: 0.1em; text-transform: uppercase;
+      border: 1px solid var(--ok); color: var(--ok);
+    }
+    .logout-btn {
+      background: transparent; color: var(--chrome-fg-dim);
+      border: 1px solid var(--chrome-line);
+      padding: 6px 14px; font-size: 11px;
+      letter-spacing: 0.08em; text-transform: uppercase;
+      cursor: pointer; transition: color 0.15s, border-color 0.15s;
+      font-family: 'IBM Plex Mono', monospace;
+    }
+    .logout-btn:hover { color: var(--chrome-fg); border-color: var(--chrome-fg); }
+
+    /* ============================================================
+       LOGIN SCREEN — dark, identical to sharing.html
+       ============================================================ */
+    .login-wrap {
+      min-height: calc(100vh - 57px);
+      background: var(--chrome-bg);
+      background-image:
+        linear-gradient(to right,  rgba(255,255,255,0.025) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(255,255,255,0.025) 1px, transparent 1px);
+      background-size: 48px 48px;
+      display: flex; align-items: center; justify-content: center;
+      padding: 32px;
+    }
+    .login-card {
+      background: var(--chrome-elev);
+      border: 1px solid var(--chrome-line);
+      padding: 40px 48px;
+      width: 100%; max-width: 420px;
+      color: var(--chrome-fg);
+    }
+    .login-card h2 {
+      font-size: 11px; letter-spacing: 0.15em;
+      text-transform: uppercase; color: var(--chrome-fg-dim);
+      margin-bottom: 24px; font-weight: 500;
+    }
+    .login-card h2::before { content: "■  "; color: var(--chrome-accent); }
+
+    .pipeline-trace {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 10px; color: var(--chrome-fg-faint);
+      letter-spacing: 0.04em; line-height: 1.7;
+      margin-bottom: 24px;
+      padding: 10px 12px;
+      background: var(--chrome-input);
+      border: 1px solid #2a2a2a;
+    }
+
+    .field { margin-bottom: 18px; }
+    .field label {
+      display: block; font-size: 10px;
+      letter-spacing: 0.1em; text-transform: uppercase;
+      color: var(--chrome-fg-faint); margin-bottom: 6px;
+    }
+    .field input {
+      width: 100%;
+      background: var(--chrome-input);
+      border: 1px solid var(--chrome-line);
+      color: var(--chrome-fg);
+      padding: 10px 12px; font-size: 13px;
+      outline: none; transition: border-color 0.15s;
+    }
+    .field input:focus { border-color: var(--chrome-accent); }
+
+    .btn-primary {
+      width: 100%;
+      background: var(--chrome-fg); color: var(--chrome-bg);
+      border: none; padding: 12px;
+      font-size: 11px; font-weight: 600;
+      letter-spacing: 0.15em; text-transform: uppercase;
+      cursor: pointer; margin-top: 8px;
+      transition: background 0.15s;
+      font-family: 'IBM Plex Mono', monospace;
+    }
+    .btn-primary:hover { background: var(--chrome-accent); }
+    .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    .login-status {
+      color: var(--err); font-size: 12px;
+      margin-top: 12px; font-family: 'IBM Plex Mono', monospace;
+      min-height: 18px;
+    }
+    .login-status.ok { color: var(--ok); }
+
+    /* ============================================================
+       DASHBOARD — light content area
+       ============================================================ */
+    main.dashboard {
+      padding: 24px 32px 32px;
+      max-width: 1500px;
+      margin: 0 auto;
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: 280px 1fr;
+      gap: 16px;
+    }
+    @media (max-width: 1000px) {
+      .layout { grid-template-columns: 1fr; }
+    }
+
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line-strong);
+      overflow: hidden;
+    }
+    .panel-head {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 12px 16px;
+      background: var(--panel-alt);
+      border-bottom: 1px solid var(--line);
+    }
+    .panel-head h3 {
+      font-size: 11px; letter-spacing: 0.12em;
+      text-transform: uppercase; color: var(--fg);
+      font-weight: 600;
+    }
+    .panel-head h3::before { content: "■  "; color: var(--fg); }
+
+    /* ============================================================
+       DEVICE LIST
+       ============================================================ */
+    .btn-secondary {
+      background: var(--panel); color: var(--fg-dim);
+      border: 1px solid var(--line-strong);
+      padding: 5px 12px; font-size: 10px;
+      letter-spacing: 0.1em; text-transform: uppercase;
+      cursor: pointer; transition: all 0.12s;
+      font-family: 'IBM Plex Mono', monospace;
+    }
+    .btn-secondary:hover { color: var(--fg); border-color: var(--fg); background: var(--panel-alt); }
+    .btn-secondary:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    #deviceList {
+      list-style: none; padding: 0;
+      max-height: 560px; overflow-y: auto;
+    }
+    #deviceList li {
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--line);
+      border-left: 3px solid transparent;
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 12px; color: var(--fg);
+      cursor: pointer; transition: all 0.12s;
+      display: flex; justify-content: space-between; align-items: center;
+    }
+    #deviceList li:last-child { border-bottom: 0; }
+    #deviceList li:hover {
+      background: var(--panel-alt);
+      border-left-color: var(--line-strong);
+    }
+    #deviceList li.active {
+      background: #eff6ff;
+      border-left-color: var(--info);
+      color: var(--fg);
+    }
+    #deviceList li .count {
+      color: var(--fg-faint); font-size: 11px;
+      letter-spacing: 0.04em;
+    }
+    #deviceList .empty {
+      color: var(--fg-faint); font-size: 11px;
+      font-style: italic; padding: 16px; text-align: center;
+      border-bottom: 0; cursor: default;
+    }
+    #deviceList .empty:hover { background: transparent; border-left-color: transparent; }
+
+    /* ============================================================
+       READINGS PANEL — controls bar
+       ============================================================ */
+    .readings-head {
+      display: flex; flex-wrap: wrap;
+      justify-content: space-between; align-items: center; gap: 12px;
+      padding: 12px 16px;
+      background: var(--panel-alt);
+      border-bottom: 1px solid var(--line);
+    }
+    .readings-head h3 {
+      font-size: 11px; letter-spacing: 0.12em;
+      text-transform: uppercase; color: var(--fg);
+      font-weight: 600;
+    }
+    .readings-head h3::before { content: "■  "; color: var(--fg); }
+    .controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+
+    .ctl-badge {
+      padding: 4px 10px;
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 10px; font-weight: 600;
+      letter-spacing: 0.1em; text-transform: uppercase;
+      border: 1px solid var(--line-strong);
+      color: var(--fg-dim);
+      background: var(--panel);
+    }
+    .ctl-badge.live-on        { color: var(--ok);   border-color: var(--ok);   background: #f0fdf4; }
+    .ctl-badge.mode-forensic  { color: var(--info); border-color: var(--info); background: #eff6ff; }
+    .ctl-badge.mode-strict    { color: var(--fg-dim); }
+
+    /* ============================================================
+       INTEGRITY BANNER
+       ============================================================ */
+    .integrity-banner {
+      padding: 12px 18px;
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 12px; letter-spacing: 0.02em;
+      border-bottom: 1px solid var(--line);
+      display: flex; align-items: center; gap: 12px;
+    }
+    .integrity-banner .marker {
+      padding: 2px 8px;
+      font-weight: 600; letter-spacing: 0.1em;
+      text-transform: uppercase; font-size: 10px;
+    }
+    .integrity-banner.clean {
+      background: #f0fdf4; color: #14532d;
+      border-bottom-color: #bbf7d0;
+    }
+    .integrity-banner.clean .marker { background: var(--ok); color: white; }
+    .integrity-banner.warn {
+      background: #fefce8; color: #713f12;
+      border-bottom-color: #fde68a;
+    }
+    .integrity-banner.warn .marker { background: var(--warn); color: white; }
+    .integrity-banner.forensic {
+      background: #eff6ff; color: #1e3a8a;
+      border-bottom-color: #bfdbfe;
+    }
+    .integrity-banner.forensic .marker { background: var(--info); color: white; }
+
+    /* ============================================================
+       READINGS TABLE
+       ============================================================ */
+    .readings-area .empty-msg {
+      color: var(--fg-faint); font-style: italic;
+      padding: 32px; text-align: center;
+    }
+
+    .table-wrap { overflow-x: auto; max-height: 580px; overflow-y: auto; }
+
+    table.readings {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+    }
+    table.readings thead {
+      background: var(--panel-alt);
+      position: sticky; top: 0; z-index: 1;
+    }
+    table.readings th {
+      text-align: left;
+      padding: 10px 12px;
+      font-size: 10px; letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--fg-dim);
+      border-bottom: 2px solid var(--line-strong);
+      font-weight: 600;
+      font-family: 'IBM Plex Mono', monospace;
+      white-space: nowrap;
+    }
+    table.readings td {
+      padding: 8px 12px;
+      border-bottom: 1px solid var(--line);
+      color: var(--fg);
+      vertical-align: middle;
+      white-space: nowrap;
+    }
+    table.readings tbody tr:nth-child(even) { background: var(--panel-alt); }
+    table.readings tbody tr:hover           { background: #f3f4f6; }
+
+    table.readings td.num   { text-align: right; }
+    table.readings td.muted { color: var(--fg-faint); }
+
+    /* Verdict pills */
+    .verdict {
+      display: inline-block;
+      padding: 2px 8px;
+      font-size: 10px; font-weight: 600;
+      letter-spacing: 0.08em; text-transform: uppercase;
+      border: 1px solid currentColor;
+      font-family: 'IBM Plex Mono', monospace;
+    }
+    .verdict.intact   { color: var(--verdict-intact);   background: var(--verdict-intact-bg); }
+    .verdict.tampered { color: var(--verdict-tampered); background: var(--verdict-tampered-bg); }
+    .verdict.pending  { color: var(--verdict-pending);  background: var(--verdict-pending-bg); }
+    .verdict.failed   { color: var(--verdict-failed);   background: var(--verdict-failed-bg); }
+
+    .hash-cell {
+      color: var(--fg-dim); cursor: help;
+      font-family: 'IBM Plex Mono', monospace;
+      letter-spacing: 0.02em;
+    }
+
+    .btn-verify {
+      background: var(--panel); color: var(--fg-dim);
+      border: 1px solid var(--line-strong);
+      padding: 3px 10px; font-size: 10px;
+      letter-spacing: 0.08em; text-transform: uppercase;
+      cursor: pointer; transition: all 0.12s;
+      font-family: 'IBM Plex Mono', monospace;
+    }
+    .btn-verify:hover { color: var(--fg); border-color: var(--fg); background: var(--panel-alt); }
+
+    .checking { color: var(--fg-dim); font-style: italic; font-size: 11px; }
+
+    /* ============================================================
+       DEBUG PANEL
+       ============================================================ */
+    .debug-panel {
+      margin-top: 16px;
+      background: var(--panel);
+      border: 1px solid var(--line-strong);
+    }
+    .debug-panel header {
+      padding: 10px 16px;
+      background: var(--panel-alt);
+      border-bottom: 1px solid var(--line);
+      font-size: 11px; letter-spacing: 0.12em;
+      text-transform: uppercase; color: var(--fg);
+      font-weight: 600;
+    }
+    .debug-panel header::before { content: "■  "; color: var(--fg); }
+    .debug-panel pre {
+      padding: 14px 16px;
+      font-size: 11px; color: var(--fg);
+      max-height: 260px; overflow: auto;
+      white-space: pre-wrap; word-break: break-all;
+      background: #fcfcfc;
+    }
+    .tok-key    { color: #0369a1; }
+    .tok-str    { color: #166534; }
+    .tok-num    { color: #b45309; }
+    .tok-bool   { color: #be185d; }
+    .tok-null   { color: var(--fg-faint); }
+
+    .hidden { display: none !important; }
+  </style>
+</head>
+<body>
+
+  <header class="topbar">
+    <h1>IoT&nbsp;//&nbsp;Integrity&nbsp;Console</h1>
+    <div class="topbar-spacer"></div>
+    <span id="userBadge" class="user-badge hidden">—</span>
+    <button id="logoutBtn" class="logout-btn hidden">Logout</button>
+  </header>
+
+  <section id="loginScreen" class="login-wrap">
+    <div class="login-card">
+      <h2>Authenticate</h2>
+      <div class="pipeline-trace">
+        Contiki/UDP&nbsp;→&nbsp;Gateway&nbsp;(AES-CCM-8)&nbsp;→&nbsp;MQTT/TLS<br>
+        →&nbsp;SQLite&nbsp;→&nbsp;Fabric&nbsp;(SHA-256)&nbsp;→&nbsp;API&nbsp;(JWT,&nbsp;strict)
+      </div>
+      <div class="field">
+        <label for="username">Username</label>
+        <input type="text" id="username" autocomplete="username" value="admin">
+      </div>
+      <div class="field">
+        <label for="password">Password</label>
+        <input type="password" id="password" autocomplete="current-password" value="admin">
+      </div>
+      <button id="loginBtn" class="btn-primary" onclick="login()">Sign&nbsp;in</button>
+      <div id="loginStatus" class="login-status"></div>
+    </div>
+  </section>
+
+  <main id="dashboard" class="dashboard hidden">
+
+    <div class="layout">
+
+      <section class="panel">
+        <div class="panel-head">
+          <h3>Devices</h3>
+          <button class="btn-secondary" onclick="loadDevices()">Refresh</button>
+        </div>
+        <ul id="deviceList">
+          <li class="empty">Click "Refresh" to list devices.</li>
+        </ul>
+      </section>
+
+      <section class="panel">
+        <div class="readings-head">
+          <h3 id="selectedTitle">Readings</h3>
+          <div class="controls">
+            <span id="liveBadge"   class="ctl-badge">LIVE: OFF</span>
+            <span id="modeBadge"   class="ctl-badge mode-strict">MODE: STRICT</span>
+            <button id="liveBtn"      class="btn-secondary" onclick="toggleLive()">Start Live</button>
+            <button id="modeBtn"      class="btn-secondary" onclick="toggleMode()">Switch to Forensic</button>
+            <button id="hashBtn"      class="btn-secondary" onclick="toggleHash()">Show Hash</button>
+            <button id="verifyAllBtn" class="btn-secondary hidden" onclick="verifyAll()"
+                    style="color:var(--warn);border-color:var(--warn);">
+              Verify All
+            </button>
+          </div>
+        </div>
+
+        <div id="integrityBanner" class="integrity-banner hidden"></div>
+
+        <div id="readingsArea" class="readings-area">
+          <div class="empty-msg">Select a device from the list.</div>
+        </div>
+      </section>
+
+    </div>
+
+    <section class="debug-panel">
+      <header>Debug&nbsp;·&nbsp;Last API response</header>
+      <pre id="debug">{ "info": "Login → Refresh devices → select device → Start Live (auto-refresh every 5s)" }</pre>
+    </section>
+
+  </main>
+
+  <script>
+  const API_BASE = "http://localhost:8080";
+  let TOKEN = "";
+
+  let SELECTED_DEVICE = "";
+  let refreshTimer    = null;
+  let LIVE            = false;
+  let SHOW_HASH       = false;
+  let STRICT          = true;
+  let LAST_ROWS       = [];
+
+  const $    = (id) => document.getElementById(id);
+  const show = (id) => $(id)?.classList.remove("hidden");
+  const hide = (id) => $(id)?.classList.add("hidden");
+
+  function setDebug(obj) {
+    const pretty = typeof obj === "string" ? obj : JSON.stringify(obj, null, 2);
+    $("debug").innerHTML = highlightJSON(pretty);
+  }
+  function highlightJSON(text) {
+    text = text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    return text
+      .replace(/"([^"\\]|\\.)*"(\s*:)/g, '<span class="tok-key">$&</span>')
+      .replace(/: "([^"\\]|\\.)*"/g, (m) => m.replace(/"([^"]*)"$/, '<span class="tok-str">"$1"</span>'))
+      .replace(/\b(-?\d+\.?\d*)\b/g,    '<span class="tok-num">$1</span>')
+      .replace(/\b(true|false)\b/g,     '<span class="tok-bool">$1</span>')
+      .replace(/\bnull\b/g,             '<span class="tok-null">null</span>');
+  }
+
+  function setLiveUI() {
+    const b = $("liveBadge");
+    b.textContent = LIVE ? "LIVE: ON" : "LIVE: OFF";
+    b.classList.toggle("live-on", LIVE);
+    $("liveBtn").textContent = LIVE ? "Stop Live" : "Start Live";
+  }
+  function setModeUI() {
+    const b = $("modeBadge");
+    b.textContent = "MODE: " + (STRICT ? "STRICT" : "FORENSIC");
+    b.classList.toggle("mode-strict",   STRICT);
+    b.classList.toggle("mode-forensic", !STRICT);
+    $("modeBtn").textContent = STRICT ? "Switch to Forensic" : "Switch to Strict";
+  }
+  function setHashUI() {
+    $("hashBtn").textContent = SHOW_HASH ? "Hide Hash" : "Show Hash";
+    $("verifyAllBtn").classList.toggle("hidden", !SHOW_HASH);
+  }
+
+  async function login() {
+    const u = $("username").value.trim();
+    const p = $("password").value;
+    const status = $("loginStatus");
+    status.textContent = "logging in…";
+    status.classList.remove("ok");
+    $("loginBtn").disabled = true;
+    try {
+      const r = await fetch(API_BASE + "/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username: u, password: p })
+      });
+      const j = await r.json();
+      setDebug(j);
+      if (j.token) {
+        TOKEN = j.token;
+        localStorage.setItem("integrity_jwt", TOKEN);
+        localStorage.setItem("integrity_user", u);
+        status.textContent = "✓ logged in";
+        status.classList.add("ok");
+        enterDashboard(u);
+      } else {
+        status.textContent = "✗ authentication failed";
+      }
+    } catch (e) {
+      status.textContent = `network error: ${e.message}`;
+    } finally {
+      $("loginBtn").disabled = false;
+    }
+  }
+
+  function logout() {
+    TOKEN = ""; SELECTED_DEVICE = ""; LAST_ROWS = [];
+    LIVE = false; SHOW_HASH = false; STRICT = true;
+    if (refreshTimer) { clearInterval(refreshTimer); refreshTimer = null; }
+    localStorage.removeItem("integrity_jwt");
+    localStorage.removeItem("integrity_user");
+    hide("dashboard"); hide("userBadge"); hide("logoutBtn");
+    show("loginScreen");
+    $("loginStatus").textContent = "";
+    setLiveUI(); setModeUI(); setHashUI();
+    setDebug({ info: "Logged out." });
+  }
+
+  function enterDashboard(user) {
+    hide("loginScreen"); show("dashboard");
+    $("userBadge").textContent = user;
+    show("userBadge"); show("logoutBtn");
+    loadDevices();
+  }
+
+  async function loadDevices() {
+    if (!TOKEN) { alert("Login first"); return; }
+    try {
+      const r = await fetch(API_BASE + "/devices", {
+        headers: { "Authorization": "Bearer " + TOKEN }
+      });
+      const devs = await r.json();
+      setDebug(devs);
+      const list = $("deviceList");
+      list.innerHTML = "";
+      if (!Array.isArray(devs) || devs.length === 0) {
+        list.innerHTML = '<li class="empty">No devices registered yet.</li>';
+        return;
+      }
+      devs.forEach(d => {
+        const li = document.createElement("li");
+        li.dataset.deviceId = d.device_id;
+        li.innerHTML = `<span>${d.device_id}</span><span class="count">n=${d.n}</span>`;
+        li.onclick = () => selectDevice(d.device_id);
+        list.appendChild(li);
+      });
+    } catch (e) {
+      setDebug({ error: e.message });
+    }
+  }
+
+  function selectDevice(deviceId) {
+    SELECTED_DEVICE = deviceId;
+    $("selectedTitle").textContent = "Readings · " + deviceId;
+    document.querySelectorAll("#deviceList li").forEach(li => {
+      li.classList.toggle("active", li.dataset.deviceId === deviceId);
+    });
+    fetchReadings(deviceId);
+    if (LIVE) startTimer();
+  }
+
+  async function fetchReadings(deviceId) {
+    if (!TOKEN || !deviceId) return;
+    const url = API_BASE + "/readings"
+              + "?device_id=" + encodeURIComponent(deviceId)
+              + "&limit=50"
+              + "&strict=" + (STRICT ? "true" : "false");
+    try {
+      const r = await fetch(url, { headers: { "Authorization": "Bearer " + TOKEN } });
+      const data = await r.json();
+      setDebug(data);
+      LAST_ROWS = Array.isArray(data.readings) ? data.readings : [];
+      renderBanner(data.hidden_summary || {});
+      if (LAST_ROWS.length === 0) {
+        $("readingsArea").innerHTML = '<div class="empty-msg">No readings to display.</div>';
+        return;
+      }
+      renderTable(LAST_ROWS);
+    } catch (e) {
+      setDebug({ error: e.message });
+      $("readingsArea").innerHTML = '<div class="empty-msg">network error: ' + e.message + '</div>';
+    }
+  }
+
+  function renderBanner(hidden) {
+    const banner = $("integrityBanner");
+    banner.classList.remove("warn", "clean", "forensic", "hidden");
+    if (!STRICT) {
+      banner.classList.add("forensic");
+      banner.innerHTML = `<span class="marker">forensic</span>
+        showing ALL rows — tampered / pending / failed included. Switch back to strict for a safe view.`;
+      return;
+    }
+    const tampered = hidden.tampered || 0;
+    const pending  = hidden.pending  || 0;
+    const failed   = hidden.failed   || 0;
+    const total    = tampered + pending + failed;
+    if (total === 0) {
+      banner.classList.add("clean");
+      banner.innerHTML = `<span class="marker">pipeline integrity</span> all rows intact.`;
+    } else {
+      banner.classList.add("warn");
+      banner.innerHTML = `<span class="marker">pipeline integrity</span>
+        ${tampered} tampered · ${pending} pending · ${failed} unverifiable — hidden from view.`;
+    }
+  }
+
+  function renderTable(rows) {
+    let html = `<div class="table-wrap"><table class="readings"><thead><tr>
+      <th>ts</th><th>seq</th><th>type</th><th>value</th><th>batt</th><th>verdict</th>`;
+    if (SHOW_HASH) html += `<th>hash (sha-256)</th><th>verify</th>`;
+    html += `</tr></thead><tbody>`;
+
+    rows.forEach((x, i) => {
+      const fullHash  = x.payload_hash || "";
+      const shortHash = fullHash.slice(0, 12);
+      const verdict   = x.verified || "?";
+      const cls       = ["intact","tampered","pending","failed"].includes(verdict) ? verdict : "failed";
+
+      html += `<tr>
+        <td class="muted">${x.ts}</td>
+        <td class="num">${x.seq}</td>
+        <td>${x.type}</td>
+        <td class="num">${x.value}</td>
+        <td class="num muted">${x.battery ?? ""}</td>
+        <td><span class="verdict ${cls}">${verdict}</span></td>`;
+      if (SHOW_HASH) {
+        html += `
+        <td class="hash-cell" title="${fullHash}">${shortHash}…</td>
+        <td id="verify-${i}">
+          <button class="btn-verify" onclick="verifyRow(${i}, '${x.device_id}', ${x.ts})">Verify</button>
+        </td>`;
+      }
+      html += `</tr>`;
+    });
+    html += `</tbody></table></div>`;
+    $("readingsArea").innerHTML = html;
+  }
+
+  async function verifyRow(index, deviceId, ts) {
+    const cell = $(`verify-${index}`);
+    if (!cell) return;
+    cell.innerHTML = `<span class="checking">⏳ checking…</span>`;
+    try {
+      const r = await fetch(
+        `${API_BASE}/readings/${encodeURIComponent(deviceId)}/${ts}/verify`,
+        { headers: { "Authorization": "Bearer " + TOKEN } }
+      );
+      const result = await r.json();
+      setDebug(result);
+      if (result.intact === true)
+        cell.innerHTML = `<span class="verdict intact">INTACT</span>`;
+      else if (result.intact === false)
+        cell.innerHTML = `<span class="verdict tampered">TAMPERED</span>`;
+      else
+        cell.innerHTML = `<span class="checking">${result.error || "unknown"}</span>`;
+    } catch (e) {
+      cell.innerHTML = `<span class="verdict tampered">ERROR</span>`;
+      console.error("verifyRow error:", e);
+    }
+  }
+
+  async function verifyAll() {
+    if (LAST_ROWS.length === 0) { alert("No rows to verify"); return; }
+    const btn = $("verifyAllBtn");
+    btn.disabled = true;
+    btn.textContent = "Verifying…";
+    for (let i = 0; i < LAST_ROWS.length; i++) {
+      const x = LAST_ROWS[i];
+      await verifyRow(i, x.device_id, x.ts);
+      await new Promise(res => setTimeout(res, 300));
+    }
+    btn.disabled = false;
+    btn.textContent = "Verify All";
+  }
+
+  function startTimer() {
+    if (refreshTimer) clearInterval(refreshTimer);
+    refreshTimer = setInterval(() => fetchReadings(SELECTED_DEVICE), 5000);
+  }
+  function stopTimer()  { if (refreshTimer) clearInterval(refreshTimer); refreshTimer = null; }
+  function toggleLive() { LIVE = !LIVE; setLiveUI(); if (LIVE) startTimer(); else stopTimer(); }
+  function toggleHash() { SHOW_HASH = !SHOW_HASH; setHashUI(); if (SELECTED_DEVICE) fetchReadings(SELECTED_DEVICE); }
+  function toggleMode() { STRICT = !STRICT; setModeUI(); if (SELECTED_DEVICE) fetchReadings(SELECTED_DEVICE); }
+
+  function init() {
+    $("logoutBtn").addEventListener("click", logout);
+    $("username").addEventListener("keydown", e => { if (e.key === "Enter") $("password").focus(); });
+    $("password").addEventListener("keydown", e => { if (e.key === "Enter") login(); });
+    setLiveUI(); setModeUI(); setHashUI();
+    const savedJwt  = localStorage.getItem("integrity_jwt");
+    const savedUser = localStorage.getItem("integrity_user");
+    if (savedJwt && savedUser) {
+      TOKEN = savedJwt;
+      enterDashboard(savedUser);
+    }
+  }
+  document.addEventListener("DOMContentLoaded", init);
+  </script>
+</body>
+</html>

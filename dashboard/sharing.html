@@ -1,0 +1,824 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>IoT Data Sharing — Multi-Role Dashboard (v1.2)</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+
+<style>
+/* ─── Reset & roots ───────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg:          #0a0a0a;
+  --bg-alt:      #131313;
+  --panel:       #181818;
+  --border:      #2a2a2a;
+  --border-hi:   #3a3a3a;
+  --fg:          #e6e6e6;
+  --fg-dim:      #888;
+  --fg-muted:    #555;
+  --accent:      #ffffff;
+  --grid:        rgba(255,255,255,0.018);
+
+  /* Role colours */
+  --role-owner:     #f5a623;  /* amber  */
+  --role-analytics: #4a90e2;  /* blue   */
+  --role-auditor:   #50c878;  /* green  */
+  --role-admin:     #e74c3c;  /* red    */
+
+  /* Type colours (echo the documentation prefixes aaaa/bbbb/cccc) */
+  --type-temp:   #ff7846;
+  --type-hum:    #46a0ff;
+  --type-press:  #b078ff;
+
+  --ok:    #50c878;
+  --warn:  #f5a623;
+  --err:   #e74c3c;
+}
+
+html, body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: 'IBM Plex Sans', sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+  min-height: 100vh;
+  /* 48-px grid texture */
+  background-image:
+    linear-gradient(var(--grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+  background-size: 48px 48px;
+}
+
+code, pre, .mono, .role-badge, button, input, select { font-family: 'IBM Plex Mono', monospace; }
+
+/* ─── Top bar ──────────────────────────────────────────────────────────── */
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 28px;
+  border-bottom: 1px solid var(--border);
+  background: rgba(0,0,0,0.4);
+  backdrop-filter: blur(8px);
+}
+.brand {
+  display: flex; align-items: baseline; gap: 14px;
+}
+.brand h1 {
+  font-size: 18px; font-weight: 700; letter-spacing: 0.5px;
+}
+.brand .ver { font-family: 'IBM Plex Mono', monospace; color: var(--fg-dim); font-size: 11px; }
+
+.user-info { display: flex; align-items: center; gap: 12px; }
+.user-info .who { color: var(--fg-dim); font-size: 12px; }
+
+/* ─── Role badge (consistent across all sections) ─────────────────────── */
+.role-badge {
+  display: inline-flex; align-items: center;
+  padding: 3px 10px;
+  border-radius: 0;
+  font-size: 11px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  border: 1px solid currentColor;
+}
+.role-owner     { color: var(--role-owner);     background: rgba(245,166, 35,0.08); }
+.role-analytics { color: var(--role-analytics); background: rgba( 74,144,226,0.08); }
+.role-auditor   { color: var(--role-auditor);   background: rgba( 80,200,120,0.08); }
+.role-admin     { color: var(--role-admin);     background: rgba(231, 76, 60,0.08); }
+
+.type-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  font-family: 'IBM Plex Mono', monospace;
+}
+.type-temp  { color: var(--type-temp);  background: rgba(255,120, 70,0.10); border: 1px solid var(--type-temp); }
+.type-hum   { color: var(--type-hum);   background: rgba( 70,160,255,0.10); border: 1px solid var(--type-hum); }
+.type-press { color: var(--type-press); background: rgba(176,120,255,0.10); border: 1px solid var(--type-press); }
+
+/* ─── Buttons ──────────────────────────────────────────────────────────── */
+button {
+  background: transparent;
+  color: var(--fg);
+  border: 1px solid var(--border-hi);
+  padding: 8px 16px;
+  font-size: 12px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  cursor: pointer;
+  transition: background 0.1s, border-color 0.1s;
+}
+button:hover:not(:disabled) { background: var(--bg-alt); border-color: var(--fg-dim); }
+button:disabled { opacity: 0.4; cursor: not-allowed; }
+button.primary {
+  background: var(--fg);
+  color: var(--bg);
+  border-color: var(--fg);
+}
+button.primary:hover:not(:disabled) { background: #d0d0d0; border-color: #d0d0d0; }
+button.danger { color: var(--err); border-color: var(--err); }
+
+input, select {
+  background: var(--bg-alt);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  padding: 8px 12px;
+  font-size: 13px;
+  outline: none;
+}
+input:focus, select:focus { border-color: var(--fg-dim); }
+
+/* ─── Main layout ──────────────────────────────────────────────────────── */
+main { padding: 28px; max-width: 1400px; margin: 0 auto; }
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  padding: 24px;
+  margin-bottom: 24px;
+}
+.panel h2 {
+  font-size: 13px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  color: var(--fg-dim);
+  margin-bottom: 18px;
+  display: flex; align-items: center; justify-content: space-between;
+}
+.panel h2 .sub { color: var(--fg-muted); font-weight: 400; font-size: 11px; letter-spacing: 0.5px; }
+
+/* ─── Login ────────────────────────────────────────────────────────────── */
+.login-wrap {
+  min-height: 80vh; display: flex; align-items: center; justify-content: center;
+}
+.login-card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  padding: 36px 44px;
+  width: 100%;
+  max-width: 420px;
+}
+.login-card h2 { text-align: center; }
+.login-row { display: flex; flex-direction: column; gap: 6px; margin-bottom: 16px; }
+.login-row label { font-size: 11px; color: var(--fg-dim); text-transform: uppercase; letter-spacing: 1px; }
+.login-card button.primary { width: 100%; margin-top: 8px; padding: 12px; }
+.login-hint {
+  margin-top: 22px;
+  padding-top: 18px;
+  border-top: 1px solid var(--border);
+  font-size: 11px;
+  color: var(--fg-muted);
+  line-height: 1.7;
+  font-family: 'IBM Plex Mono', monospace;
+}
+
+/* ─── Endpoint probe cards ─────────────────────────────────────────────── */
+.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 16px;
+}
+.card {
+  background: var(--bg-alt);
+  border: 1px solid var(--border);
+  padding: 16px;
+  display: flex; flex-direction: column; gap: 12px;
+}
+.card .endpoint {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 12px;
+  color: var(--fg);
+  word-break: break-all;
+}
+.card .target-roles {
+  display: flex; flex-wrap: wrap; gap: 4px;
+}
+.card .target-roles .role-badge { font-size: 9px; padding: 2px 6px; }
+.card .status {
+  font-family: 'IBM Plex Mono', monospace;
+  padding: 8px 10px;
+  font-size: 12px;
+  background: #0e0e0e;
+  border: 1px solid var(--border);
+  min-height: 38px;
+  display: flex; align-items: center; gap: 12px;
+}
+.status .code  { font-weight: 600; }
+.status .code.ok   { color: var(--ok); }
+.status .code.err  { color: var(--err); }
+.status .code.warn { color: var(--warn); }
+.status .ms { color: var(--fg-muted); }
+
+/* ─── Response viewer ──────────────────────────────────────────────────── */
+.viewer {
+  background: #0d0d0d;
+  border: 1px solid var(--border);
+  padding: 18px;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 12px;
+  line-height: 1.6;
+  max-height: 380px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.viewer .json-key    { color: var(--type-hum); }
+.viewer .json-string { color: var(--ok); }
+.viewer .json-number { color: var(--type-temp); }
+.viewer .json-bool   { color: var(--role-admin); }
+
+/* ─── Policy editor (device + type) ───────────────────────────────────── */
+.policy-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr 1fr;
+  gap: 14px;
+  margin-bottom: 18px;
+}
+@media (max-width: 900px) { .policy-grid { grid-template-columns: 1fr 1fr; } }
+
+.policy-cell {
+  background: #0e0e0e;
+  border: 1px solid var(--border);
+  padding: 14px;
+  display: flex; flex-direction: column; gap: 8px;
+}
+.policy-cell .head { display: flex; justify-content: space-between; align-items: center; }
+.policy-cell label.reader-check {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 11px;
+  color: var(--fg-dim);
+  cursor: pointer;
+}
+.policy-cell select { padding: 6px 8px; font-size: 12px; width: 100%; }
+
+.policy-actions { display: flex; gap: 10px; align-items: center; }
+.policy-actions .indicator {
+  font-family: 'IBM Plex Mono', monospace; font-size: 11px;
+  color: var(--fg-muted);
+}
+
+.type-tabs {
+  display: flex; gap: 8px;
+  margin-bottom: 18px;
+  border-bottom: 1px solid var(--border);
+}
+.type-tabs button {
+  border: none; border-bottom: 2px solid transparent;
+  background: transparent; color: var(--fg-dim);
+  padding: 10px 16px;
+  text-transform: uppercase; letter-spacing: 1px;
+  cursor: pointer;
+}
+.type-tabs button.active {
+  color: var(--fg);
+  border-bottom-color: var(--fg);
+}
+.type-tabs button:hover { color: var(--fg); background: transparent; }
+
+/* ─── Audit log ────────────────────────────────────────────────────────── */
+table.log {
+  width: 100%; border-collapse: collapse;
+  font-family: 'IBM Plex Mono', monospace; font-size: 11px;
+}
+table.log th, table.log td {
+  text-align: left;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+}
+table.log th {
+  color: var(--fg-muted);
+  text-transform: uppercase; letter-spacing: 1px;
+  font-weight: 500;
+  font-size: 10px;
+}
+table.log td.granted-y { color: var(--ok); }
+table.log td.granted-n { color: var(--err); }
+
+/* ─── Utility ──────────────────────────────────────────────────────────── */
+.hidden { display: none !important; }
+.row { display: flex; gap: 14px; align-items: center; }
+.fg-muted { color: var(--fg-muted); }
+.fg-dim   { color: var(--fg-dim); }
+.right    { margin-left: auto; }
+.spacer   { flex: 1; }
+.empty    { padding: 30px; text-align: center; color: var(--fg-muted); font-style: italic; }
+</style>
+</head>
+
+<body>
+
+<!-- ═══════════ LOGIN ═══════════ -->
+<div id="loginView">
+<div class="login-wrap">
+  <div class="login-card">
+    <h2 style="text-align:center; margin-bottom:24px;">
+      IOT DATA SHARING <span class="ver mono" style="color:var(--fg-muted)">— v1.2</span>
+    </h2>
+    <div class="login-row">
+      <label>username</label>
+      <input id="loginUser" type="text" autocomplete="username" placeholder="alice / bob / charlie / admin" />
+    </div>
+    <div class="login-row">
+      <label>password</label>
+      <input id="loginPass" type="password" autocomplete="current-password" />
+    </div>
+    <button class="primary" id="loginBtn">SIGN IN</button>
+    <p id="loginErr" style="color:var(--err); margin-top:10px; font-size:12px; text-align:center; min-height:16px;"></p>
+
+    <div class="login-hint">
+      DEMO USERS:<br>
+      &nbsp;&nbsp;alice / alice123      → <span class="role-badge role-owner">OWNER</span><br>
+      &nbsp;&nbsp;bob / bob123          → <span class="role-badge role-analytics">ANALYTICS</span><br>
+      &nbsp;&nbsp;charlie / charlie123  → <span class="role-badge role-auditor">AUDITOR</span><br>
+      &nbsp;&nbsp;admin / admin123      → <span class="role-badge role-admin">ADMIN</span>
+    </div>
+  </div>
+</div>
+</div>
+
+
+<!-- ═══════════ MAIN DASHBOARD ═══════════ -->
+<div id="dashView" class="hidden">
+
+<header class="topbar">
+  <div class="brand">
+    <h1>IOT DATA SHARING</h1>
+    <span class="ver">v1.2 — chaincode iot-integrity</span>
+  </div>
+  <div class="user-info">
+    <span class="who">signed in as <strong id="navUser" class="mono"></strong></span>
+    <span id="navRole" class="role-badge"></span>
+    <button id="logoutBtn">SIGN OUT</button>
+  </div>
+</header>
+
+<main>
+
+  <!-- ── Endpoint probe cards ─────────────────────────────────── -->
+  <section class="panel">
+    <h2>
+      <span>ENDPOINT PROBES</span>
+      <span class="sub">device: <input id="targetDevice" value="mote-90" style="width:140px; font-size:12px; padding:4px 8px;" /></span>
+    </h2>
+    <div class="cards">
+      <div class="card">
+        <div class="endpoint">GET /readings/full</div>
+        <div class="target-roles">
+          <span class="role-badge role-owner">OWNER</span>
+          <span class="role-badge role-admin">ADMIN</span>
+        </div>
+        <button onclick="probeEndpoint('full')">TRY</button>
+        <div class="status" id="status-full"><span class="fg-muted">awaiting probe…</span></div>
+      </div>
+      <div class="card">
+        <div class="endpoint">GET /readings/aggregated</div>
+        <div class="target-roles">
+          <span class="role-badge role-analytics">ANALYTICS</span>
+          <span class="role-badge role-admin">ADMIN</span>
+        </div>
+        <button onclick="probeEndpoint('aggregated')">TRY</button>
+        <div class="status" id="status-aggregated"><span class="fg-muted">awaiting probe…</span></div>
+      </div>
+      <div class="card">
+        <div class="endpoint">GET /readings/verify</div>
+        <div class="target-roles">
+          <span class="role-badge role-auditor">AUDITOR</span>
+          <span class="role-badge role-admin">ADMIN</span>
+        </div>
+        <button onclick="probeEndpoint('verify')">TRY</button>
+        <div class="status" id="status-verify"><span class="fg-muted">awaiting probe…</span></div>
+      </div>
+      <div class="card">
+        <div class="endpoint">GET /audit/&lt;dev&gt;</div>
+        <div class="target-roles">
+          <span class="role-badge role-auditor">AUDITOR</span>
+          <span class="role-badge role-admin">ADMIN</span>
+        </div>
+        <button onclick="probeEndpoint('audit')">TRY</button>
+        <div class="status" id="status-audit"><span class="fg-muted">awaiting probe…</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Response viewer ──────────────────────────────────────── -->
+  <section class="panel">
+    <h2><span>LAST RESPONSE</span><span class="sub mono" id="responseHeader">—</span></h2>
+    <pre class="viewer" id="responseViewer">no response yet — issue a probe above</pre>
+  </section>
+
+  <!-- ── Per-device policy editor (owner / admin only) ───────── -->
+  <section class="panel hidden" id="devicePolicyPanel">
+    <h2>
+      <span>PER-DEVICE POLICY</span>
+      <span class="sub">device: <span id="policyDeviceLabel" class="mono">mote-90</span></span>
+    </h2>
+    <div class="policy-grid" id="devicePolicyGrid">
+      <!-- populated by JS -->
+    </div>
+    <div class="policy-actions">
+      <button class="primary" onclick="pushDevicePolicy()">PUSH POLICY ON-CHAIN</button>
+      <span id="devicePolicyStatus" class="indicator"></span>
+    </div>
+  </section>
+
+  <!-- ── Per-TYPE policy editor (admin only) ─NEW v1.2 ─────────── -->
+  <section class="panel hidden" id="typePolicyPanel">
+    <h2>
+      <span>PER-TYPE POLICY (v1.2)</span>
+      <span class="sub">composes with per-device — AND, least permissive</span>
+    </h2>
+    <div class="type-tabs" id="typeTabs">
+      <button class="active" onclick="switchTypeTab('temp')"><span class="type-badge type-temp">TEMP</span></button>
+      <button onclick="switchTypeTab('hum')"><span class="type-badge type-hum">HUM</span></button>
+      <button onclick="switchTypeTab('press')"><span class="type-badge type-press">PRESS</span></button>
+    </div>
+    <div class="policy-grid" id="typePolicyGrid">
+      <!-- populated by JS -->
+    </div>
+    <div class="policy-actions">
+      <button class="primary" onclick="pushTypePolicy()">PUSH TYPE POLICY ON-CHAIN</button>
+      <button class="danger" onclick="revokeAnalytics()">DEMO: REVOKE ANALYTICS</button>
+      <span id="typePolicyStatus" class="indicator"></span>
+    </div>
+  </section>
+
+  <!-- ── On-chain audit log (auditor / admin only) ───────────── -->
+  <section class="panel hidden" id="auditPanel">
+    <h2>
+      <span>ON-CHAIN AUDIT LOG</span>
+      <span class="sub">
+        <button onclick="loadAuditLog()" style="padding:4px 10px; font-size:11px;">REFRESH</button>
+      </span>
+    </h2>
+    <table class="log" id="auditTable">
+      <thead>
+        <tr>
+          <th>TIMESTAMP</th>
+          <th>DEVICE</th>
+          <th>CONSUMER</th>
+          <th>ROLE</th>
+          <th>GRANTED</th>
+          <th>REASON</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td colspan="6" class="empty">no entries loaded — click REFRESH</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+</main>
+</div>
+
+
+<!-- ═══════════ SCRIPT ═══════════ -->
+<script>
+"use strict";
+
+const API = "http://localhost:5001";
+const ROLES = ["owner", "analytics", "auditor", "admin"];
+const VIS_LEVELS = ["full", "aggregated", "hash-only", "denied"];
+const TYPES = ["temp", "hum", "press"];
+
+let jwt = null;
+let role = null;
+let user = null;
+let currentTypeTab = "temp";
+
+/* ─── Auth ──────────────────────────────────────────────────────────────── */
+document.getElementById("loginBtn").addEventListener("click", login);
+document.getElementById("logoutBtn").addEventListener("click", logout);
+document.getElementById("loginPass").addEventListener("keydown", e => {
+  if (e.key === "Enter") login();
+});
+
+async function login() {
+  const u = document.getElementById("loginUser").value.trim();
+  const p = document.getElementById("loginPass").value;
+  const errEl = document.getElementById("loginErr");
+  errEl.textContent = "";
+
+  try {
+    const r = await fetch(`${API}/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username: u, password: p }),
+    });
+    if (!r.ok) {
+      errEl.textContent = `login failed (HTTP ${r.status})`;
+      return;
+    }
+    const data = await r.json();
+    jwt = data.access_token || data.token; role = data.role; user = u;
+    enterDashboard();
+  } catch (e) {
+    errEl.textContent = "network error — is the API on :5001 up?";
+  }
+}
+
+function logout() {
+  jwt = null; role = null; user = null;
+  document.getElementById("dashView").classList.add("hidden");
+  document.getElementById("loginView").classList.remove("hidden");
+  document.getElementById("loginPass").value = "";
+}
+
+function enterDashboard() {
+  document.getElementById("loginView").classList.add("hidden");
+  document.getElementById("dashView").classList.remove("hidden");
+  document.getElementById("navUser").textContent = user;
+  const rb = document.getElementById("navRole");
+  rb.textContent = role.toUpperCase();
+  rb.className = `role-badge role-${role}`;
+
+  /* role-conditional visibility */
+  const isOwnerOrAdmin   = (role === "owner" || role === "admin");
+  const isAdmin          = (role === "admin");
+  const isAuditorOrAdmin = (role === "auditor" || role === "admin");
+
+  document.getElementById("devicePolicyPanel").classList.toggle("hidden", !isOwnerOrAdmin);
+  document.getElementById("typePolicyPanel").classList.toggle("hidden",   !isAdmin);
+  document.getElementById("auditPanel").classList.toggle("hidden",        !isAuditorOrAdmin);
+
+  if (isOwnerOrAdmin) buildDevicePolicyGrid();
+  if (isAdmin)        loadTypePolicy(currentTypeTab);
+  if (isAuditorOrAdmin) loadAuditLog();
+}
+
+/* ─── Endpoint probes ───────────────────────────────────────────────────── */
+async function probeEndpoint(kind) {
+  const dev = document.getElementById("targetDevice").value.trim() || "mote-90";
+  const target = document.getElementById(`status-${kind}`);
+  target.innerHTML = '<span class="fg-muted">…</span>';
+
+  const url = (kind === "audit")
+    ? `${API}/audit/${dev}`
+    : `${API}/readings/${kind}?device_id=${encodeURIComponent(dev)}`;
+
+  const t0 = performance.now();
+  let resp, code, ms, bodyTxt = "";
+  try {
+    resp = await fetch(url, { headers: { "Authorization": `Bearer ${jwt}` } });
+    code = resp.status;
+    bodyTxt = await resp.text();
+    ms = Math.round(performance.now() - t0);
+  } catch (e) {
+    code = 0; ms = Math.round(performance.now() - t0);
+    bodyTxt = String(e);
+  }
+
+  const cls = code >= 200 && code < 300 ? "ok"
+            : code === 403 || code === 401 ? "warn"
+            : "err";
+  target.innerHTML = `<span class="code ${cls}">${code || "ERR"}</span><span class="ms">${ms} ms</span>`;
+  showResponse(`${resp ? resp.statusText : "network"} — ${url}`, bodyTxt);
+}
+
+function showResponse(header, raw) {
+  document.getElementById("responseHeader").textContent = header;
+  const el = document.getElementById("responseViewer");
+  try {
+    el.innerHTML = highlightJSON(JSON.stringify(JSON.parse(raw), null, 2));
+  } catch {
+    el.textContent = raw || "(empty)";
+  }
+}
+
+function highlightJSON(s) {
+  return s
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;")
+    .replace(/("(?:\\.|[^"\\])*")(\s*:)/g, '<span class="json-key">$1</span>$2')
+    .replace(/:\s*("(?:\\.|[^"\\])*")/g, ': <span class="json-string">$1</span>')
+    .replace(/:\s*(-?\d+(?:\.\d+)?)/g, ': <span class="json-number">$1</span>')
+    .replace(/:\s*(true|false|null)/g, ': <span class="json-bool">$1</span>');
+}
+
+/* ─── Per-device policy editor ──────────────────────────────────────────── */
+function buildDevicePolicyGrid() {
+  document.getElementById("policyDeviceLabel").textContent =
+    document.getElementById("targetDevice").value.trim() || "mote-90";
+
+  const grid = document.getElementById("devicePolicyGrid");
+  grid.innerHTML = "";
+  ROLES.forEach(r => {
+    grid.appendChild(buildPolicyCell(r, /* idPrefix */ "dev-"));
+  });
+  // Try to fetch the actual current policy and reflect it
+  refreshDevicePolicy();
+}
+
+async function refreshDevicePolicy() {
+  const dev = document.getElementById("targetDevice").value.trim() || "mote-90";
+  try {
+    const r = await fetch(`${API}/policy/${dev}`,
+      { headers: { "Authorization": `Bearer ${jwt}` } });
+    if (!r.ok) return;
+    const pol = await r.json();
+    ROLES.forEach(r => {
+      const isReader = pol.readers && pol.readers.includes(r);
+      const vis = (pol.visibility && pol.visibility[r]) || "denied";
+      document.getElementById(`dev-${r}-check`).checked = isReader;
+      document.getElementById(`dev-${r}-vis`).value = vis;
+    });
+  } catch (e) { /* silent */ }
+}
+
+async function pushDevicePolicy() {
+  const dev = document.getElementById("targetDevice").value.trim() || "mote-90";
+  const { readers, visibility } = collectPolicyCells("dev-");
+  const statusEl = document.getElementById("devicePolicyStatus");
+  statusEl.textContent = "pushing…";
+  try {
+    const r = await fetch(`${API}/policy/${dev}`, {
+      method: "PUT",
+      headers: {
+        "Authorization": `Bearer ${jwt}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ readers, visibility }),
+    });
+    statusEl.textContent = r.ok
+      ? `✓ committed to chain (HTTP ${r.status})`
+      : `✗ rejected (HTTP ${r.status})`;
+    setTimeout(() => statusEl.textContent = "", 4000);
+  } catch (e) {
+    statusEl.textContent = "✗ network error";
+  }
+}
+
+/* ─── Per-type policy editor (NEW v1.2) ─────────────────────────────────── */
+function switchTypeTab(t) {
+  currentTypeTab = t;
+  document.querySelectorAll("#typeTabs button").forEach(b => b.classList.remove("active"));
+  event.target.closest("button").classList.add("active");
+  loadTypePolicy(t);
+}
+
+async function loadTypePolicy(t) {
+  const grid = document.getElementById("typePolicyGrid");
+  grid.innerHTML = "";
+  ROLES.forEach(r => grid.appendChild(buildPolicyCell(r, "type-")));
+
+  try {
+    const r = await fetch(`${API}/policy/type/${t}`,
+      { headers: { "Authorization": `Bearer ${jwt}` } });
+    if (!r.ok) {
+      document.getElementById("typePolicyStatus").textContent =
+        `no policy for type "${t}" — fill the form to register`;
+      return;
+    }
+    const pol = await r.json();
+    ROLES.forEach(role => {
+      const isReader = pol.readers && pol.readers.includes(role);
+      const vis = (pol.visibility && pol.visibility[role]) || "denied";
+      document.getElementById(`type-${role}-check`).checked = isReader;
+      document.getElementById(`type-${role}-vis`).value = vis;
+    });
+    document.getElementById("typePolicyStatus").textContent =
+      `loaded existing policy for type "${t}"`;
+  } catch (e) { /* silent */ }
+}
+
+async function pushTypePolicy() {
+  const t = currentTypeTab;
+  const { readers, visibility } = collectPolicyCells("type-");
+  const statusEl = document.getElementById("typePolicyStatus");
+  statusEl.textContent = "pushing…";
+
+  // Try PUT first (UpdateTypePolicy); if 404, fall back to POST (RegisterTypePolicy)
+  let r = await fetch(`${API}/policy/type/${t}`, {
+    method: "PUT",
+    headers: {
+      "Authorization": `Bearer ${jwt}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ readers, visibility }),
+  }).catch(() => null);
+
+  if (!r || r.status === 404 || r.status === 500) {
+    r = await fetch(`${API}/policy/type/${t}`, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${jwt}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ readers, visibility }),
+    }).catch(() => null);
+  }
+
+  statusEl.textContent = (r && r.ok)
+    ? `✓ committed to chain for type "${t}" (HTTP ${r.status})`
+    : `✗ rejected (HTTP ${r ? r.status : "ERR"})`;
+  setTimeout(() => statusEl.textContent = "", 5000);
+}
+
+async function revokeAnalytics() {
+  /* One-click demo: revoke analytics at the current type tab. */
+  const t = currentTypeTab;
+  if (!confirm(`Revoke ANALYTICS at type level for "${t}"?\n\nThis change applies to ALL devices of this type and is auditable on chain.`))
+    return;
+
+  document.getElementById(`type-analytics-check`).checked = false;
+  document.getElementById(`type-analytics-vis`).value = "denied";
+
+  /* Keep other roles permissive */
+  ["owner", "auditor", "admin"].forEach(r => {
+    document.getElementById(`type-${r}-check`).checked = true;
+    const def = r === "auditor" ? "hash-only" : "full";
+    document.getElementById(`type-${r}-vis`).value = def;
+  });
+
+  await pushTypePolicy();
+}
+
+/* ─── Shared helpers for policy editors ─────────────────────────────────── */
+function buildPolicyCell(roleName, idPrefix) {
+  const cell = document.createElement("div");
+  cell.className = "policy-cell";
+  cell.innerHTML = `
+    <div class="head">
+      <span class="role-badge role-${roleName}">${roleName.toUpperCase()}</span>
+    </div>
+    <label class="reader-check">
+      <input type="checkbox" id="${idPrefix}${roleName}-check" />
+      include in readers
+    </label>
+    <select id="${idPrefix}${roleName}-vis">
+      ${VIS_LEVELS.map(v => `<option value="${v}">${v}</option>`).join("")}
+    </select>
+  `;
+  return cell;
+}
+
+function collectPolicyCells(idPrefix) {
+  const readers = [];
+  const visibility = {};
+  ROLES.forEach(r => {
+    if (document.getElementById(`${idPrefix}${r}-check`).checked) {
+      readers.push(r);
+    }
+    visibility[r] = document.getElementById(`${idPrefix}${r}-vis`).value;
+  });
+  return { readers, visibility };
+}
+
+/* ─── Audit log ─────────────────────────────────────────────────────────── */
+async function loadAuditLog() {
+  const dev = document.getElementById("targetDevice").value.trim() || "mote-90";
+  const tbody = document.querySelector("#auditTable tbody");
+  tbody.innerHTML = `<tr><td colspan="6" class="empty">loading…</td></tr>`;
+  try {
+    const r = await fetch(`${API}/audit/${dev}`,
+      { headers: { "Authorization": `Bearer ${jwt}` } });
+    if (!r.ok) {
+      tbody.innerHTML =
+        `<tr><td colspan="6" class="empty">audit fetch failed (HTTP ${r.status})</td></tr>`;
+      return;
+    }
+    const entries = await r.json();
+    if (!Array.isArray(entries) || entries.length === 0) {
+      tbody.innerHTML =
+        `<tr><td colspan="6" class="empty">no audit entries for ${dev}</td></tr>`;
+      return;
+    }
+    tbody.innerHTML = "";
+    entries.sort((a, b) => b.timestamp - a.timestamp);
+    entries.forEach(e => {
+      const tr = document.createElement("tr");
+      const ts = new Date(e.timestamp).toISOString().replace("T", " ").replace("Z", "");
+      tr.innerHTML = `
+        <td>${ts}</td>
+        <td>${e.device_id}</td>
+        <td>${e.consumer}</td>
+        <td><span class="role-badge role-${e.role}">${e.role.toUpperCase()}</span></td>
+        <td class="${e.granted ? 'granted-y' : 'granted-n'}">${e.granted ? 'YES' : 'NO'}</td>
+        <td class="fg-dim">${e.reason || ''}</td>
+      `;
+      tbody.appendChild(tr);
+    });
+  } catch (e) {
+    tbody.innerHTML =
+      `<tr><td colspan="6" class="empty">network error</td></tr>`;
+  }
+}
+
+/* ─── Re-load policy when device input changes (admin/owner) ────────────── */
+document.getElementById("targetDevice").addEventListener("change", () => {
+  if (role === "owner" || role === "admin") buildDevicePolicyGrid();
+});
+</script>
+
+</body>
+</html>
