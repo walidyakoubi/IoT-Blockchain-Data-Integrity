@@ -1,8 +1,7 @@
 # PFE Final Overview — IoT Data Integrity & Sharing on Hyperledger Fabric
 
-**Author:** Oualid yakoubi — Master 2, Telecommunication Systems
+**Author:** Oualid yakoubi
 **Project family:** Secure IoT pipeline + Permissioned blockchain
-**Status at close:** Pipeline fully operational, 22 implementation steps completed
 
 ---
 
