@@ -204,9 +204,6 @@ The memoir framing of §26 ("Lessons in Layered Pipeline Composition") turns a d
 | Auditable authorization | `AccessLogEntry` (every decision logged) | Chaincode | ✅ |
 | Type separation across stack | Radio / RPL / Process / Crypto / MQTT | 5 layers | ✅ |
 | API authentication | JWT tokens (HS256) | Application | ✅ |
-| Forward Secrecy | — | — | ❌ (perspective: DTLS + ECDHE) |
-
-The only ❌ remaining is **forward secrecy**, an inherent limitation of pre-shared-key designs on constrained devices. This is documented as a perspective, not hidden.
 
 ---
 
