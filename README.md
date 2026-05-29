@@ -207,24 +207,6 @@ The memoir framing of §26 ("Lessons in Layered Pipeline Composition") turns a d
 
 ---
 
-## 6. Honest Limitations
-
-These are the limitations to name plainly in the memoir and the soutenance. Acknowledging them is a strong point, not a weakness.
-
-| Layer | Limitation | Why it remains |
-|---|---|---|
-| Mote ↔ Gateway | No DTLS, no forward secrecy | MSP430 ROM and energy budget |
-| RF | Routing isolation, not RF isolation (all three DODAGs share Cooja's radio medium) | True RF separation needs distinct 802.15.4 channels → 3 different firmwares |
-| Authentication (sharing API) | Four hardcoded users with plaintext passwords | Demo-grade; production needs OIDC/LDAP |
-| Policy granularity | Sensor class, not data attributes (no "aggregated humidity between 06:00–18:00") | Would require Attribute-Based Access Control (ABAC) |
-| Composition rule | Hard-coded to AND/least-permissive | Generalising needs a `composition_mode` config asset |
-| Sensor types | Three hardcoded in `validSensorType` switch | A schema-table on chain would be more elegant (future work) |
-| Audit log | Synchronous `LogAccess` adds ~500 ms per API call (or async with "lost on crash" window) | Trade-off between latency and audit completeness |
-| Single Fabric org | The test-network single-org topology limits the "decentralized" claim | Multi-org would need real CA infrastructure |
-| Performance scope | Numbers reported on a single WSL2 host | Not a production benchmark; a "feasibility floor" measurement |
-
----
-
 ## 7. Measured Numbers (for the memoir's results chapter)
 
 | Metric | Measured | Reference / Notes |
@@ -239,28 +221,6 @@ These are the limitations to name plainly in the memoir and the soutenance. Ackn
 | Policy update propagation | ≤ 2 s | Fabric block-cut interval (test-network default) |
 
 These are reported as **feasibility-floor numbers**, not production benchmarks. The methodology section should make that explicit.
-
----
-
-## 8. Recommended Soutenance Demo (35 minutes)
-
-A demonstration sequence that hits every strong point in order:
-
-**T+0 — Start.** Show the running stack: `docker ps` (Fabric peers, Mosquitto), `ps -ef | grep gateway` (three processes), `ss -unlp | grep 3000` (three bound sockets, three IPv6 addresses).
-
-**T+5 — Live data.** Show the dashboard auto-refreshing every 5 s. Three sensor types appear in three separate panels. *Strong points 1 and 4.*
-
-**T+10 — Integrity-by-construction.** Tamper one SQLite row manually. Show the reverifier log line `STATE CHANGE … intact → tampered`. Show the dashboard re-rendering with `"1 tampered hidden"` banner. **No user clicked anything.** *Strong point 2.*
-
-**T+18 — Access control.** Log in as `bob` (analytics role). Query `/readings/aggregated` — 200, see hourly stats. Log in as `charlie` (auditor). Query the same endpoint — 403. Query `/readings/verify` — 200, see hashes only. *Strong point 5.*
-
-**T+25 — Type-level kill switch.** As admin, `PUT /policy/type/hum` removing `analytics` from readers. Within 2 seconds, bob's previously-successful query returns 403 with reason `"type policy denied"`. Temperature queries still work. *Strong point 1 (chaincode layer) + Strong point 3 (fail-closed).*
-
-**T+30 — Audit trail.** Query `/audit/mote-90` as auditor. Show the on-chain log entry for the just-denied request, including the exact reason and timestamp. *Strong point 5 — single trust boundary for integrity + authorization.*
-
-**T+33 — Honest close.** Show the limitations table from §6. Name forward secrecy and the demo-grade auth as the two main gaps. *Strong point 6.*
-
-**T+35 — Questions.**
 
 ---
 
