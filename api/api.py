@@ -1,22 +1,56 @@
+"""
+api/api.py — Integrity API (port 8080)
+========================================
+
+Serves the production read path for the IoT integrity pipeline:
+  • /health, /login                              public
+  • /devices, /readings, /reading/<id>           JWT-protected listing
+  • /readings/<device_id>/<int:ts>/verify        manual forensic verify
+
+──────────────────────────────────────────────────────────────────────────
+The forensic /verify endpoint previously embedded its own `peer chaincode
+query` subprocess and called VerifyHash with the v1.0/v1.1 signature
+(3 args). After the chaincode v1.2 deploy of §31, that signature became
+`VerifyHash(recordID, candidateHash)` — 2 args — so every forensic call
+would now fail with "Expected 2, received 3".
+
+This patch:
+  1. Imports `fabric_access.verify_hash`, the v1.2-aware wrapper from §27.
+  2. Pulls `seq` from the SQLite row and builds the composite record id
+     `<device_id>_<ts>_<seq>` per §33.2's convention.
+  3. Deletes the inline subprocess block (FABRIC_SAMPLES, _fabric_env,
+     etc.) — the duplicated bridge code was what hid the drift from §33's
+     audit. One bridge, one place to patch.
+"""
+
 import sqlite3
+import sys
 import time
-from pathlib import Path
 from functools import wraps
+from pathlib import Path
 
-from flask import Flask, request, jsonify
 import jwt
-
+from flask import Flask, request, jsonify
 from flask_cors import CORS
+
+# Allow `from fabric_access import …` — fabric_access.py is in the same
+# api/ directory as this file (the v1.2-aware chaincode wrapper).
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from fabric_access import verify_hash as _chain_verify_hash
 
 DB_PATH = Path(__file__).resolve().parents[1] / "db" / "iot.db"
 
-# change this for your project (JWT secret)
+# Demo JWT secret — replace before any production use.
 JWT_SECRET = "CHANGE_ME_SUPER_SECRET"
 JWT_ALG    = "HS256"
 
 app = Flask(__name__)
 CORS(app)
 
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Helpers
+# ─────────────────────────────────────────────────────────────────────────────
 
 def db_query(sql, args=(), one=False):
     con = sqlite3.connect(DB_PATH)
@@ -27,6 +61,18 @@ def db_query(sql, args=(), one=False):
     if one:
         return dict(rows[0]) if rows else None
     return [dict(r) for r in rows]
+
+
+def make_record_id(device_id: str, timestamp: int, seq: int = 0) -> str:
+    """
+    Construct the deterministic ledger key for one reading.
+
+    Mirrors `fabric_client.make_record_id` so the read and write paths key
+    the ledger identically. See §33.2 of the session document for the
+    triple-(device_id, ts, seq) convention and why `seq` is required for
+    collision-free keys.
+    """
+    return f"{device_id}_{timestamp}_{seq}"
 
 
 def require_jwt(fn):
@@ -43,6 +89,10 @@ def require_jwt(fn):
         return fn(*args, **kwargs)
     return wrapper
 
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Public endpoints
+# ─────────────────────────────────────────────────────────────────────────────
 
 @app.get("/health")
 def health():
@@ -91,7 +141,7 @@ def devices():
 #   strict    (default true)     true  → only verified='intact' rows
 #                                false → all rows (forensic / audit view)
 #
-# Response shape (NEW — different from the old list-of-rows shape):
+# Response shape:
 #   {
 #     "count":          12,
 #     "strict":         true,
@@ -165,65 +215,54 @@ def reading(rid: int):
 # This endpoint lets the user (or the jury) ask Fabric directly about a
 # specific (device_id, ts) pair, bypassing the cached SQLite verdict.
 # Useful when demonstrating the system end-to-end during the soutenance.
+#
+# v1.2 contract (POST-PATCH):
+#   VerifyHash(recordID, candidateHash) — 2 args.
+#   The composite record id is `<device_id>_<ts>_<seq>` and is built
+#   client-side from the same SQLite row that provides `payload_hash`.
+#   Calling fabric_access.verify_hash() reuses the wrapper that already
+#   speaks the v1.2 contract, so a future v1.3 only requires a single
+#   point of edit (fabric_access.py).
 # ─────────────────────────────────────────────────────────────────────────────
-import subprocess, os, json
-
-FABRIC_SAMPLES = os.path.expanduser("~/hyperFabric/fabric-samples")
-TEST_NETWORK   = os.path.join(FABRIC_SAMPLES, "test-network")
-PEER_BIN       = os.path.join(FABRIC_SAMPLES, "bin", "peer")
-ORDERER_CA     = os.path.join(TEST_NETWORK,
-    "organizations/ordererOrganizations/example.com"
-    "/orderers/orderer.example.com/msp/tlscacerts/tlsca.example.com-cert.pem")
-ORG1_BASE      = os.path.join(TEST_NETWORK,
-    "organizations/peerOrganizations/org1.example.com")
-
-
-def _fabric_env():
-    env = os.environ.copy()
-    env["PATH"]                        = os.path.join(FABRIC_SAMPLES, "bin") + ":" + env.get("PATH", "")
-    env["FABRIC_CFG_PATH"]             = os.path.join(FABRIC_SAMPLES, "config")
-    env["CORE_PEER_TLS_ENABLED"]       = "true"
-    env["CORE_PEER_LOCALMSPID"]        = "Org1MSP"
-    env["CORE_PEER_ADDRESS"]           = "localhost:7051"
-    env["CORE_PEER_TLS_ROOTCERT_FILE"] = f"{ORG1_BASE}/peers/peer0.org1.example.com/tls/ca.crt"
-    env["CORE_PEER_MSPCONFIGPATH"]     = f"{ORG1_BASE}/users/Admin@org1.example.com/msp"
-    return env
-
-
 @app.get("/readings/<device_id>/<int:ts>/verify")
 @require_jwt
 def verify_reading(device_id, ts):
     row = db_query(
-        "SELECT payload_hash FROM readings WHERE device_id=? AND ts=?",
+        "SELECT seq, payload_hash FROM readings WHERE device_id=? AND ts=?",
         (device_id, ts), one=True
     )
     if not row:
         return jsonify({"error": "not found"}), 404
 
+    # `seq` is part of the schema since §33; legacy rows may have NULL.
+    seq = int(row["seq"]) if row.get("seq") is not None else 0
     stored_hash = row["payload_hash"]
-    args = json.dumps({
-        "function": "VerifyHash",
-        "Args": [device_id, str(ts), stored_hash]
-    })
-    cmd = [
-        PEER_BIN, "chaincode", "query",
-        "--channelID", "mychannel",
-        "--name",      "iot-integrity",
-        "-c", args,
-    ]
-    try:
-        result = subprocess.run(cmd, env=_fabric_env(),
-                                capture_output=True, text=True, timeout=15)
-        intact = result.stdout.strip().lower() == "true"
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+    record_id   = make_record_id(device_id, ts, seq)
+
+    # Delegate to the v1.2-aware wrapper. Returns True if the on-chain
+    # hash equals stored_hash, False on tamper / not-found / chain error.
+    intact = _chain_verify_hash(record_id, stored_hash)
 
     return jsonify({
         "device_id":   device_id,
         "ts":          ts,
+        "seq":         seq,
+        "record_id":   record_id,
         "stored_hash": stored_hash,
         "intact":      intact,
     })
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Removed (was the inline subprocess bridge for /verify):
+#   import subprocess, os, json
+#   FABRIC_SAMPLES, TEST_NETWORK, PEER_BIN, ORDERER_CA, ORG1_BASE constants
+#   def _fabric_env()
+#
+# The duplication of fabric_client's bridge logic here is what allowed
+# the drift in §34 to go unnoticed during §33's audit. Single bridge,
+# single point of edit.
+# ─────────────────────────────────────────────────────────────────────────────
 
 
 if __name__ == "__main__":
