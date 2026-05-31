@@ -1,4 +1,4 @@
-# PFE Final Overview — IoT Data Integrity & Sharing on Hyperledger Fabric
+# IoT Data Integrity & Sharing on Hyperledger Fabric
 
 **Author:** Oualid yakoubi
 **Project family:** Secure IoT pipeline + Permissioned blockchain
