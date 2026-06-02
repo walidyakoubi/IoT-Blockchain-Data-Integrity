@@ -1,7 +1,7 @@
 # IoT Data Integrity & Sharing on Hyperledger Fabric
 
 **Author:** Oualid yakoubi
-**Project family:** Secure IoT pipeline + Permissioned blockchain
+**Project :** Secure IoT pipeline + Permissioned blockchain
 
 ---
 
@@ -122,11 +122,9 @@ The project did not start as 22 steps. The list below is the **honest order of c
 
 ---
 
-## 4. Strong Points (the headline arguments for the jury)
+Each point is **defensible by a specific artifact in the codebase**.
 
-These are the points that will distinguish this PFE in the eyes of the jury. Each one is **defensible by a specific artifact in the codebase**.
-
-### Strong Point 1 — Defense-in-depth across the OSI stack
+### Point 1 — Defense-in-depth across the OSI stack
 
 The project does not rely on a single security mechanism. **Type separation alone is enforced at five independent layers** (after §29/§30):
 
@@ -140,13 +138,13 @@ The project does not rely on a single security mechanism. **Type separation alon
 
 Any one layer would catch a misrouted packet on its own. This is the difference between a checkbox security project and an architecture.
 
-### Strong Point 2 — Integrity "by construction", not by user action
+### Point 2 — Integrity "by construction", not by user action
 
 The API serves **only** rows whose SQLite `verified` column equals `'intact'`. The reverifier process updates that column every 60 seconds against the Fabric ledger. The dashboard cannot, *by structural property*, display tampered data — there is no code path that produces such an output.
 
 This is a structural guarantee, not a runtime check. It eliminates the failure mode of a negligent user not clicking "Verify".
 
-### Strong Point 3 — Fail-closed everywhere
+### Point 3 — Fail-closed everywhere
 
 Every authorization path collapses all failure modes into the same response:
 - `CheckAccess` returns `"denied"` whether the policy is missing, the role is not whitelisted, the ledger read failed, or the JSON parse failed.
@@ -155,7 +153,7 @@ Every authorization path collapses all failure modes into the same response:
 
 The pattern is the same across the stack, and it is the security-architecture principle that earns the project the right to call itself defense-in-depth.
 
-### Strong Point 4 — Real cryptography on a real constrained device
+### Point 4 — Real cryptography on a real constrained device
 
 The mote firmware fits inside MSP430's 48 KB ROM and runs:
 - tinyAES (kokke/tiny-AES-c, public domain) — 128-bit AES-ECB primitive
@@ -166,7 +164,7 @@ The ROM-budget table (§25) is part of the engineering contribution — it shows
 
 This is honest IoT-security engineering, not desktop-grade cryptography pretending to be embedded.
 
-### Strong Point 5 — On-chain access control + audit trail in the same trust boundary as integrity
+### Point 5 — On-chain access control + audit trail in the same trust boundary as integrity
 
 The same Fabric ledger holds:
 1. SHA-256 payload hashes (integrity anchoring)
@@ -175,15 +173,13 @@ The same Fabric ledger holds:
 
 A regulator auditing the system has **one** source of truth for both "is the data intact?" and "who accessed it under what authorization?". This is rare in IoT systems — most pipelines treat these as two separate problems.
 
-### Strong Point 6 — Honest engineering documentation
+### Point 6 — Honest engineering documentation
 
 The session log includes:
 - **Rejected optimizations** (UDP checksum disable — kernel-drop on IPv6) — kept in the memoir as a methodological lesson.
 - **Five external probes** for pipeline validation (`tcpdump`, `mosquitto_sub`, `sqlite3 .schema`, `docker ps` + `peer chaincode query`).
 - **A six-step recovery procedure** for restarting the whole stack after WSL2/Docker resets.
 - **Limitation sections** at the end of every major step (§29.8, §30.7, §31.8) where every honest weakness is named.
-
-The memoir framing of §26 ("Lessons in Layered Pipeline Composition") turns a debugging session into a defensible engineering contribution. A jury that values intellectual honesty over a polished surface will weigh this heavily.
 
 ---
 
@@ -207,7 +203,7 @@ The memoir framing of §26 ("Lessons in Layered Pipeline Composition") turns a d
 
 ---
 
-## 7. Measured Numbers (for the memoir's results chapter)
+## 6. Measured Numbers (for the memoir's results chapter)
 
 | Metric | Measured | Reference / Notes |
 |---|---|---|
@@ -224,26 +220,16 @@ These are reported as **feasibility-floor numbers**, not production benchmarks. 
 
 ---
 
-## 9. Closing Reflection
+## 7. Closing Reflection
 
-What this PFE demonstrates is not a novel cryptographic primitive or a new blockchain protocol. It demonstrates something arguably harder and more useful for an engineer's first major project: **the discipline of composing well-understood mechanisms into a system whose security properties are visible and defensible at every layer.**
-
-The project's value to a jury is not "we implemented X". It is:
+The project's value is:
 
 1. *We placed the trust boundary where the decision is made, not where the data is consumed.*
 2. *We made the security properties structural, not procedural — they hold by construction, not by user vigilance.*
 3. *We documented every rejected optimization and every honest limitation, so the system's claims are exactly the system's guarantees — no more, no less.*
-
-If the soutenance comes down to one sentence, it is this:
 
 > *"This project does not claim to be more secure than its mechanisms allow. It claims to make those mechanisms compose cleanly, and to make the composition auditable. That is the contribution."*
 
 ---
 
 ## Thanks
-
-A long pipeline like this is built one failed compile at a time. The fact that it ends with a working end-to-end demo, twenty-two documented steps, and an honest list of limitations is itself a result worth defending.
-
-Good luck with the soutenance.
-
-— End of overview —
